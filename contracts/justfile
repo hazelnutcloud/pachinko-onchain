@@ -1,0 +1,4 @@
+set dotenv-load := true
+
+deploy rpc_url:
+    forge script script/DeployPachinko.s.sol:DeployPachinko --rpc-url {{ rpc_url }} --broadcast --private-key $PRIVATE_KEY -vvvv
