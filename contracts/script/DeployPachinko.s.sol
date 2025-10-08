@@ -44,7 +44,7 @@ contract DeployPachinko is Script {
             106e18,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[1] = LibPhysics2D.initRectBody(
@@ -54,7 +54,7 @@ contract DeployPachinko is Script {
             3e18,
             100e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[2] = LibPhysics2D.initRectBody(
@@ -64,7 +64,7 @@ contract DeployPachinko is Script {
             3e18,
             100e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
 
@@ -81,7 +81,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[4] = LibPhysics2D.initCircleBody(
@@ -90,7 +90,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[5] = LibPhysics2D.initCircleBody(
@@ -99,7 +99,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[6] = LibPhysics2D.initCircleBody(
@@ -108,7 +108,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[7] = LibPhysics2D.initCircleBody(
@@ -117,7 +117,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
 
@@ -130,7 +130,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[9] = LibPhysics2D.initCircleBody(
@@ -139,7 +139,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[10] = LibPhysics2D.initCircleBody(
@@ -148,7 +148,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[11] = LibPhysics2D.initCircleBody(
@@ -157,7 +157,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
 
@@ -170,7 +170,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[13] = LibPhysics2D.initCircleBody(
@@ -179,7 +179,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[14] = LibPhysics2D.initCircleBody(
@@ -188,7 +188,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[15] = LibPhysics2D.initCircleBody(
@@ -197,7 +197,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[16] = LibPhysics2D.initCircleBody(
@@ -206,7 +206,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
 
@@ -219,7 +219,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[18] = LibPhysics2D.initCircleBody(
@@ -228,7 +228,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[19] = LibPhysics2D.initCircleBody(
@@ -237,7 +237,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[20] = LibPhysics2D.initCircleBody(
@@ -246,7 +246,7 @@ contract DeployPachinko is Script {
             pinY,
             3e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
 
@@ -258,7 +258,7 @@ contract DeployPachinko is Script {
             3e18,
             15e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[22] = LibPhysics2D.initRectBody(
@@ -268,7 +268,7 @@ contract DeployPachinko is Script {
             3e18,
             15e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[23] = LibPhysics2D.initRectBody(
@@ -278,7 +278,7 @@ contract DeployPachinko is Script {
             3e18,
             15e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[24] = LibPhysics2D.initRectBody(
@@ -288,7 +288,7 @@ contract DeployPachinko is Script {
             3e18,
             15e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
         bodies[25] = LibPhysics2D.initRectBody(
@@ -298,7 +298,7 @@ contract DeployPachinko is Script {
             3e18,
             15e18,
             type(int256).max,
-            5e17,
+            0,
             true
         );
     }

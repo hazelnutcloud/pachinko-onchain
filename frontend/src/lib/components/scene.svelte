@@ -4,6 +4,11 @@
 
 	const { ballX, ballY } = $props();
 
+	$effect(() => {
+		console.log('ballX', ballX);
+		console.log('ballY', ballY);
+	});
+
 	const SCALE = 0.001;
 
 	const toThree = (x: number, y: number) => ({
@@ -22,10 +27,12 @@
 <T.DirectionalLight position={[5, 10, 5]} intensity={0.8} />
 
 <!-- Ball  --> --
-<T.Mesh position={[toThree(ballX, ballY).x, toThree(ballX, ballY).y, 0]}>
-	<T.SphereGeometry args={[0.0025, 32, 32]} />
-	<T.MeshStandardMaterial color="#ff6b6b" />
-</T.Mesh>
+{#key [ballX, ballY]}
+	<T.Mesh position={[toThree(ballX, ballY).x, toThree(ballX, ballY).y, 0]}>
+		<T.SphereGeometry args={[0.0025, 32, 32]} />
+		<T.MeshStandardMaterial color="#ff6b6b" />
+	</T.Mesh>
+{/key}
 
 <!-- Walls -->
 <T.Mesh position={[toThree(53, 1.5).x, toThree(53, 1.5).y, 0]}>

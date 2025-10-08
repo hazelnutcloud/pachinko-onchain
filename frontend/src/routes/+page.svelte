@@ -39,7 +39,7 @@
 	$effect(() => {
 		if (!wallet.client || !wallet.signer) return;
 
-		wallet.client.watchContractEvent({
+		const unsubscribeGameTicked = wallet.client.watchContractEvent({
 			abi: pachinkoContracts.abi,
 			address: pachinkoContracts.addresses[riseTestnet.id],
 			eventName: 'GameTicked',
@@ -48,7 +48,7 @@
 			},
 			onLogs: (logs) => {
 				for (const log of logs) {
-					console.log(log);
+					// console.log(log);
 					if (!log.args.ballX || !log.args.ballY) continue;
 					ballX = parseFloat(formatEther(log.args.ballX));
 					ballY = parseFloat(formatEther(log.args.ballY));
@@ -56,7 +56,7 @@
 			}
 		});
 
-		wallet.client.watchContractEvent({
+		const unsubscribeGameStarted = wallet.client.watchContractEvent({
 			abi: pachinkoContracts.abi,
 			address: pachinkoContracts.addresses[riseTestnet.id],
 			eventName: 'GameStarted',
@@ -70,7 +70,7 @@
 			}
 		});
 
-		wallet.client.watchContractEvent({
+		const unsubscribeGameEnded = wallet.client.watchContractEvent({
 			abi: pachinkoContracts.abi,
 			address: pachinkoContracts.addresses[riseTestnet.id],
 			eventName: 'GameEnded',
@@ -83,6 +83,15 @@
 				}
 			}
 		});
+
+		console.log('subscribed');
+
+		return () => {
+			console.log('unsubscribed');
+			unsubscribeGameStarted();
+			unsubscribeGameEnded();
+			unsubscribeGameTicked();
+		};
 	});
 
 	const STEP_GAME_DATA = encodeFunctionData({
@@ -140,7 +149,7 @@
 	const handleStepGame = async () => {
 		if (!isGameStarted) return;
 		if (!wallet.client || !wallet.signer) return;
-		console.log('stepping game');
+		// console.log('stepping game');
 
 		const serializedTransaction = await wallet.client.signTransaction({
 			...getBaseTxParams(wallet.signer),
@@ -153,12 +162,34 @@
 			serializedTransaction
 		});
 
-		console.log('stepGame receipt: ', res);
+		// console.log('stepGame receipt: ', res);
 	};
 
 	const handleStopGame = () => {
 		clearInterval(stepGameInterval);
 		stepGameInterval = undefined;
+	};
+
+	const handleResetGame = async () => {
+		handleStopGame();
+		if (!wallet.client || !wallet.signer) return;
+		console.log('resetting game');
+
+		const serializedTransaction = await wallet.client.signTransaction({
+			...getBaseTxParams(wallet.signer),
+			chain: riseTestnet,
+			data: encodeFunctionData({
+				abi: pachinkoContracts.abi,
+				functionName: 'resetGame'
+			}),
+			to: pachinkoContracts.addresses[riseTestnet.id]
+		});
+
+		const res = await wallet.client.sendRawTransactionSync({
+			serializedTransaction
+		});
+
+		console.log('resetGame receipt: ', res);
 	};
 </script>
 
@@ -186,8 +217,11 @@
 					<Scene {ballX} {ballY} />
 				</Canvas>
 			</div>
-			<div class="flex w-full items-center justify-center">
+			<div class="flex w-full items-center justify-center gap-2">
 				{#if stepGameInterval === undefined && isGameStarted}
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleResetGame}>
+						Reset Game
+					</button>
 					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleContinueGame}>
 						Continue Game
 					</button>
@@ -196,8 +230,11 @@
 						Start Game
 					</button>
 				{:else}
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleResetGame}>
+						Reset Game
+					</button>
 					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleStopGame}>
-						Stop Game
+						Pause Game
 					</button>
 				{/if}
 			</div>

@@ -1,14 +1,14 @@
 import { browser } from '$app/environment';
-import { http } from '@wagmi/core';
 import {
 	createWalletClient,
 	publicActions,
 	type Hex,
 	type Client,
-	type HttpTransport,
 	type PublicRpcSchema,
 	type PublicActions,
-	type WalletActions
+	type WalletActions,
+	webSocket,
+	type WebSocketTransport
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import { riseTestnet } from 'viem/chains';
@@ -17,7 +17,7 @@ export class Wallet {
 	signer: PrivateKeyAccount | undefined = $state.raw();
 	client:
 		| Client<
-				HttpTransport,
+				WebSocketTransport,
 				typeof riseTestnet,
 				PrivateKeyAccount,
 				PublicRpcSchema,
@@ -42,7 +42,7 @@ export class Wallet {
 		this.client = createWalletClient({
 			account: this.signer,
 			chain: riseTestnet,
-			transport: http()
+			transport: webSocket('wss://indexing.testnet.riselabs.xyz/ws')
 		}).extend(publicActions);
 	}
 

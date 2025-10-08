@@ -65,7 +65,7 @@ contract Pachinko is Ownable {
             initialY,
             25e17,
             1e18,
-            5e17, // 0.5
+            0, // 0.01
             false
         );
 
