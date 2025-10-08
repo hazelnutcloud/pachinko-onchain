@@ -36,7 +36,6 @@ library LibPhysics2D {
 
     struct World {
         RigidBody[] bodies;
-        uint256 currentTime;
     }
 
     struct Vector2 {
@@ -72,15 +71,6 @@ library LibPhysics2D {
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                       WORLD MANAGEMENT                     */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
-
-    function initWorld(World storage world) internal {
-        delete world.bodies;
-        world.currentTime = 0;
-    }
-
-    function getWorldTime(World storage world) internal view returns (uint256) {
-        return world.currentTime;
-    }
 
     function getBodyCount(World storage world) internal view returns (uint256) {
         return world.bodies.length;
@@ -125,16 +115,16 @@ library LibPhysics2D {
     /// @return movedBodyId The ID of the body that was moved (type(uint256).max if no swap occurred)
     function removeRigidBody(World storage world, uint256 id) internal returns (uint256 movedBodyId) {
         if (id >= world.bodies.length) revert BodyDoesNotExist();
-        
+
         uint256 lastIndex = world.bodies.length - 1;
-        
+
         if (id != lastIndex) {
             world.bodies[id] = world.bodies[lastIndex];
             movedBodyId = lastIndex;
         } else {
             movedBodyId = type(uint256).max;
         }
-        
+
         world.bodies.pop();
     }
 
@@ -142,7 +132,7 @@ library LibPhysics2D {
         if (timestep == 0) return;
         if (timestep > MAX_TIMESTEP) revert InvalidTimestep();
         if (timestep > uint256(type(int256).max)) revert InvalidTimestep();
-        
+
         // casting to 'int256' is safe because timestep is validated above
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 dt = int256(timestep);
@@ -173,11 +163,9 @@ library LibPhysics2D {
         // 4. Detect and resolve collisions
         for (uint256 i = 0; i < bodyCount; i++) {
             for (uint256 j = i + 1; j < bodyCount; j++) {
-                (RigidBody memory b1, RigidBody memory b2, bool collided) = resolveCollision(
-                    world.bodies[i], 
-                    world.bodies[j]
-                );
-                
+                (RigidBody memory b1, RigidBody memory b2, bool collided) =
+                    resolveCollision(world.bodies[i], world.bodies[j]);
+
                 if (collided) {
                     world.bodies[i] = b1;
                     world.bodies[j] = b2;
@@ -191,8 +179,77 @@ library LibPhysics2D {
                 world.bodies[i] = resetAcceleration(world.bodies[i]);
             }
         }
+    }
 
-        world.currentTime += timestep;
+    function step(World storage world, World storage map, uint256 timestep) internal {
+        if (timestep == 0) return;
+        if (timestep > MAX_TIMESTEP) revert InvalidTimestep();
+        if (timestep > uint256(type(int256).max)) revert InvalidTimestep();
+
+        // casting to 'int256' is safe because timestep is validated above
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 dt = int256(timestep);
+
+        uint256 bodyCount = world.bodies.length;
+        uint256 mapBodyCount = map.bodies.length;
+
+        // 1. Apply gravity to all non-static bodies
+        for (uint256 i = 0; i < bodyCount; i++) {
+            if (!world.bodies[i].isStatic) {
+                world.bodies[i] = applyGravity(world.bodies[i]);
+            }
+        }
+
+        // 2. Integrate velocity (v = v + a * dt)
+        for (uint256 i = 0; i < bodyCount; i++) {
+            if (!world.bodies[i].isStatic) {
+                world.bodies[i] = integrateVelocity(world.bodies[i], dt);
+            }
+        }
+
+        // 3. Integrate position (p = p + v * dt) BEFORE collision resolution
+        for (uint256 i = 0; i < bodyCount; i++) {
+            if (!world.bodies[i].isStatic) {
+                world.bodies[i] = integratePosition(world.bodies[i], dt);
+            }
+        }
+
+        // 4. Detect and resolve collisions
+        for (uint256 i = 0; i < bodyCount; i++) {
+            for (uint256 j = i + 1; j < bodyCount; j++) {
+                (RigidBody memory b1, RigidBody memory b2, bool collided) =
+                    resolveCollision(world.bodies[i], world.bodies[j]);
+
+                if (collided) {
+                    world.bodies[i] = b1;
+                    world.bodies[j] = b2;
+                }
+            }
+        }
+
+        //5. Detect and resolve map collisions
+        for (uint256 i = 0; i < bodyCount; i++) {
+            // skip if world body is static
+            if (world.bodies[i].isStatic) continue;
+
+            for (uint256 j = 0; j < mapBodyCount; j++) {
+                // skip if map body is not static
+                if (!map.bodies[j].isStatic) continue;
+
+                (RigidBody memory b1,, bool collided) = resolveCollision(world.bodies[i], map.bodies[j]);
+
+                if (collided) {
+                    world.bodies[i] = b1;
+                }
+            }
+        }
+
+        // 5. Reset accelerations
+        for (uint256 i = 0; i < bodyCount; i++) {
+            if (!world.bodies[i].isStatic) {
+                world.bodies[i] = resetAcceleration(world.bodies[i]);
+            }
+        }
     }
 
     function applyForceToBody(World storage world, uint256 id, int256 fx, int256 fy) internal {
@@ -233,10 +290,7 @@ library LibPhysics2D {
         body.acceleration = Vector2(0, 0);
         body.shapeType = ShapeType.Rectangle;
 
-        AABB memory bounds = AABB(
-            Vector2(x - width / 2, y - height / 2),
-            Vector2(x + width / 2, y + height / 2)
-        );
+        AABB memory bounds = AABB(Vector2(x - width / 2, y - height / 2), Vector2(x + width / 2, y + height / 2));
         body.colliderData = abi.encode(bounds);
 
         body.mass = mass;
@@ -276,11 +330,7 @@ library LibPhysics2D {
     /*                      FORCE APPLICATION                     */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    function applyForce(
-        RigidBody memory body,
-        int256 fx,
-        int256 fy
-    ) internal pure returns (RigidBody memory) {
+    function applyForce(RigidBody memory body, int256 fx, int256 fy) internal pure returns (RigidBody memory) {
         if (body.isStatic) revert CannotModifyStaticBody();
         if (body.mass == 0) revert InvalidMass();
 
@@ -290,11 +340,7 @@ library LibPhysics2D {
         return body;
     }
 
-    function setVelocity(
-        RigidBody memory body,
-        int256 vx,
-        int256 vy
-    ) internal pure returns (RigidBody memory) {
+    function setVelocity(RigidBody memory body, int256 vx, int256 vy) internal pure returns (RigidBody memory) {
         if (body.isStatic) revert CannotModifyStaticBody();
 
         body.velocity.x = vx;
@@ -307,36 +353,22 @@ library LibPhysics2D {
     /*                    PHYSICS INTEGRATION                     */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    function applyGravity(
-        RigidBody memory body
-    ) internal pure returns (RigidBody memory) {
+    function applyGravity(RigidBody memory body) internal pure returns (RigidBody memory) {
         if (!body.isStatic) {
             body.acceleration.y += GRAVITY;
         }
         return body;
     }
 
-    function integrateVelocity(
-        RigidBody memory body,
-        int256 dt
-    ) internal pure returns (RigidBody memory) {
+    function integrateVelocity(RigidBody memory body, int256 dt) internal pure returns (RigidBody memory) {
         if (body.isStatic) return body;
 
-        body.velocity.x += FixedPointMathLib.rawSMulWad(
-            body.acceleration.x,
-            dt
-        );
-        body.velocity.y += FixedPointMathLib.rawSMulWad(
-            body.acceleration.y,
-            dt
-        );
+        body.velocity.x += FixedPointMathLib.rawSMulWad(body.acceleration.x, dt);
+        body.velocity.y += FixedPointMathLib.rawSMulWad(body.acceleration.y, dt);
         return body;
     }
 
-    function integratePosition(
-        RigidBody memory body,
-        int256 dt
-    ) internal pure returns (RigidBody memory) {
+    function integratePosition(RigidBody memory body, int256 dt) internal pure returns (RigidBody memory) {
         if (body.isStatic) return body;
 
         int256 dx = FixedPointMathLib.rawSMulWad(body.velocity.x, dt);
@@ -361,9 +393,7 @@ library LibPhysics2D {
         return body;
     }
 
-    function resetAcceleration(
-        RigidBody memory body
-    ) internal pure returns (RigidBody memory) {
+    function resetAcceleration(RigidBody memory body) internal pure returns (RigidBody memory) {
         if (body.isStatic) return body;
 
         body.acceleration.x = 0;
@@ -375,38 +405,24 @@ library LibPhysics2D {
     /*                    COLLISION DETECTION                     */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    function checkAABBCollision(
-        AABB memory a,
-        AABB memory b
-    ) internal pure returns (bool) {
-        return (a.min.x <= b.max.x &&
-            a.max.x >= b.min.x &&
-            a.min.y <= b.max.y &&
-            a.max.y >= b.min.y);
+    function checkAABBCollision(AABB memory a, AABB memory b) internal pure returns (bool) {
+        return (a.min.x <= b.max.x && a.max.x >= b.min.x && a.min.y <= b.max.y && a.max.y >= b.min.y);
     }
 
-    function checkCircleCollision(
-        Vector2 memory pos1,
-        int256 radius1,
-        Vector2 memory pos2,
-        int256 radius2
-    ) internal pure returns (bool) {
+    function checkCircleCollision(Vector2 memory pos1, int256 radius1, Vector2 memory pos2, int256 radius2)
+        internal
+        pure
+        returns (bool)
+    {
         int256 dx = pos2.x - pos1.x;
         int256 dy = pos2.y - pos1.y;
-        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) +
-            FixedPointMathLib.rawSMulWad(dy, dy);
+        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) + FixedPointMathLib.rawSMulWad(dy, dy);
         int256 radiusSum = radius1 + radius2;
-        int256 radiusSumSquared = FixedPointMathLib.rawSMulWad(
-            radiusSum,
-            radiusSum
-        );
+        int256 radiusSumSquared = FixedPointMathLib.rawSMulWad(radiusSum, radiusSum);
         return distSquared <= radiusSumSquared;
     }
 
-    function checkCollision(
-        RigidBody memory b1,
-        RigidBody memory b2
-    ) internal pure returns (bool) {
+    function checkCollision(RigidBody memory b1, RigidBody memory b2) internal pure returns (bool) {
         AABB memory bounds1 = getBounds(b1);
         AABB memory bounds2 = getBounds(b2);
 
@@ -414,24 +430,13 @@ library LibPhysics2D {
             return false;
         }
 
-        if (
-            b1.shapeType == ShapeType.Circle && b2.shapeType == ShapeType.Circle
-        ) {
+        if (b1.shapeType == ShapeType.Circle && b2.shapeType == ShapeType.Circle) {
             Circle memory c1 = abi.decode(b1.colliderData, (Circle));
             Circle memory c2 = abi.decode(b2.colliderData, (Circle));
-            return
-                checkCircleCollision(
-                    b1.position,
-                    c1.radius,
-                    b2.position,
-                    c2.radius
-                );
+            return checkCircleCollision(b1.position, c1.radius, b2.position, c2.radius);
         }
 
-        if (
-            b1.shapeType == ShapeType.Rectangle &&
-            b2.shapeType == ShapeType.Rectangle
-        ) {
+        if (b1.shapeType == ShapeType.Rectangle && b2.shapeType == ShapeType.Rectangle) {
             return true;
         }
 
@@ -444,27 +449,18 @@ library LibPhysics2D {
         }
     }
 
-    function checkCircleRectCollision(
-        Vector2 memory circlePos,
-        int256 radius,
-        AABB memory rect
-    ) internal pure returns (bool) {
-        int256 closestX = FixedPointMathLib.clamp(
-            circlePos.x,
-            rect.min.x,
-            rect.max.x
-        );
-        int256 closestY = FixedPointMathLib.clamp(
-            circlePos.y,
-            rect.min.y,
-            rect.max.y
-        );
+    function checkCircleRectCollision(Vector2 memory circlePos, int256 radius, AABB memory rect)
+        internal
+        pure
+        returns (bool)
+    {
+        int256 closestX = FixedPointMathLib.clamp(circlePos.x, rect.min.x, rect.max.x);
+        int256 closestY = FixedPointMathLib.clamp(circlePos.y, rect.min.y, rect.max.y);
 
         int256 dx = circlePos.x - closestX;
         int256 dy = circlePos.y - closestY;
 
-        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) +
-            FixedPointMathLib.rawSMulWad(dy, dy);
+        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) + FixedPointMathLib.rawSMulWad(dy, dy);
         int256 radiusSquared = FixedPointMathLib.rawSMulWad(radius, radius);
 
         return distSquared <= radiusSquared;
@@ -474,55 +470,45 @@ library LibPhysics2D {
     /*                    COLLISION RESOLUTION                    */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    function resolveCollision(
-        RigidBody memory b1,
-        RigidBody memory b2
-    ) internal pure returns (RigidBody memory, RigidBody memory, bool) {
-        if (!checkCollision(b1, b2)) {
-            return (b1, b2, false);
-        }
-
+    function resolveCollision(RigidBody memory b1, RigidBody memory b2)
+        internal
+        pure
+        returns (RigidBody memory, RigidBody memory, bool)
+    {
         if (b1.isStatic && b2.isStatic) {
             return (b1, b2, true);
         }
 
-        if (
-            b1.shapeType == ShapeType.Circle && b2.shapeType == ShapeType.Circle
-        ) {
+        if (!checkCollision(b1, b2)) {
+            return (b1, b2, false);
+        }
+
+        if (b1.shapeType == ShapeType.Circle && b2.shapeType == ShapeType.Circle) {
             return resolveCircleCircleCollision(b1, b2);
         }
 
-        if (
-            b1.shapeType == ShapeType.Rectangle &&
-            b2.shapeType == ShapeType.Rectangle
-        ) {
+        if (b1.shapeType == ShapeType.Rectangle && b2.shapeType == ShapeType.Rectangle) {
             return resolveAABBCollision(b1, b2);
         }
 
         if (b1.shapeType == ShapeType.Circle) {
             return resolveCircleRectCollision(b1, b2);
         } else {
-            (b2, b1, ) = resolveCircleRectCollision(b2, b1);
+            (b2, b1,) = resolveCircleRectCollision(b2, b1);
             return (b1, b2, true);
         }
     }
 
-    function resolveAABBCollision(
-        RigidBody memory b1,
-        RigidBody memory b2
-    ) internal pure returns (RigidBody memory, RigidBody memory, bool) {
+    function resolveAABBCollision(RigidBody memory b1, RigidBody memory b2)
+        internal
+        pure
+        returns (RigidBody memory, RigidBody memory, bool)
+    {
         AABB memory bounds1 = abi.decode(b1.colliderData, (AABB));
         AABB memory bounds2 = abi.decode(b2.colliderData, (AABB));
 
-        (
-            Vector2 memory normal,
-            int256 penetration
-        ) = calculateAABBCollisionData(
-                bounds1,
-                bounds2,
-                b1.position,
-                b2.position
-            );
+        (Vector2 memory normal, int256 penetration) =
+            calculateAABBCollisionData(bounds1, bounds2, b1.position, b2.position);
 
         separateBodies(b1, b2, normal, penetration);
         updateBoundsAfterCollision(b1);
@@ -536,18 +522,14 @@ library LibPhysics2D {
             int256 relVelX = b2.velocity.x - b1.velocity.x;
             int256 relVelY = b2.velocity.y - b1.velocity.y;
 
-            int256 velAlongNormal = FixedPointMathLib.rawSMulWad(
-                relVelX,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
+            int256 velAlongNormal =
+                FixedPointMathLib.rawSMulWad(relVelX, normal.x) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
 
             if (velAlongNormal > 0) return (b1, b2, true);
 
             int256 j = FixedPointMathLib.rawSMulWad(-(WAD + e), velAlongNormal);
             j = FixedPointMathLib.rawSDivWad(
-                j,
-                FixedPointMathLib.rawSDivWad(WAD, b1.mass) +
-                    FixedPointMathLib.rawSDivWad(WAD, b2.mass)
+                j, FixedPointMathLib.rawSDivWad(WAD, b1.mass) + FixedPointMathLib.rawSDivWad(WAD, b2.mass)
             );
 
             int256 impulseX = FixedPointMathLib.rawSMulWad(j, normal.x);
@@ -558,55 +540,38 @@ library LibPhysics2D {
             b2.velocity.x += FixedPointMathLib.rawSDivWad(impulseX, b2.mass);
             b2.velocity.y += FixedPointMathLib.rawSDivWad(impulseY, b2.mass);
         } else if (!b1.isStatic) {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                b1.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
-            b1.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b1.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(b1.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
+            b1.velocity.x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            b1.velocity.y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         } else {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                b2.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
-            b2.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b2.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(b2.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
+            b2.velocity.x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            b2.velocity.y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         }
 
         return (b1, b2, true);
     }
 
-    function resolveCircleCircleCollision(
-        RigidBody memory b1,
-        RigidBody memory b2
-    ) internal pure returns (RigidBody memory, RigidBody memory, bool) {
+    function resolveCircleCircleCollision(RigidBody memory b1, RigidBody memory b2)
+        internal
+        pure
+        returns (RigidBody memory, RigidBody memory, bool)
+    {
         Circle memory c1 = abi.decode(b1.colliderData, (Circle));
         Circle memory c2 = abi.decode(b2.colliderData, (Circle));
 
         int256 dx = b2.position.x - b1.position.x;
         int256 dy = b2.position.y - b1.position.y;
-        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) +
-            FixedPointMathLib.rawSMulWad(dy, dy);
+        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) + FixedPointMathLib.rawSMulWad(dy, dy);
         int256 dist = sqrt(distSquared);
 
         if (dist == 0) return (b1, b2, true);
 
-        Vector2 memory normal = Vector2(
-            FixedPointMathLib.rawSDivWad(dx, dist),
-            FixedPointMathLib.rawSDivWad(dy, dist)
-        );
+        Vector2 memory normal = Vector2(FixedPointMathLib.rawSDivWad(dx, dist), FixedPointMathLib.rawSDivWad(dy, dist));
 
         int256 penetration = c1.radius + c2.radius - dist;
 
@@ -620,18 +585,14 @@ library LibPhysics2D {
             int256 relVelX = b2.velocity.x - b1.velocity.x;
             int256 relVelY = b2.velocity.y - b1.velocity.y;
 
-            int256 velAlongNormal = FixedPointMathLib.rawSMulWad(
-                relVelX,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
+            int256 velAlongNormal =
+                FixedPointMathLib.rawSMulWad(relVelX, normal.x) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
 
             if (velAlongNormal > 0) return (b1, b2, true);
 
             int256 j = FixedPointMathLib.rawSMulWad(-(WAD + e), velAlongNormal);
             j = FixedPointMathLib.rawSDivWad(
-                j,
-                FixedPointMathLib.rawSDivWad(WAD, b1.mass) +
-                    FixedPointMathLib.rawSDivWad(WAD, b2.mass)
+                j, FixedPointMathLib.rawSDivWad(WAD, b1.mass) + FixedPointMathLib.rawSDivWad(WAD, b2.mass)
             );
 
             int256 impulseX = FixedPointMathLib.rawSMulWad(j, normal.x);
@@ -642,59 +603,37 @@ library LibPhysics2D {
             b2.velocity.x += FixedPointMathLib.rawSDivWad(impulseX, b2.mass);
             b2.velocity.y += FixedPointMathLib.rawSDivWad(impulseY, b2.mass);
         } else if (!b1.isStatic) {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                b1.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
-            b1.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b1.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(b1.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
+            b1.velocity.x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            b1.velocity.y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         } else {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                b2.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
-            b2.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b2.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(b2.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
+            b2.velocity.x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            b2.velocity.y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         }
 
         return (b1, b2, true);
     }
 
-    function resolveCircleRectCollision(
-        RigidBody memory circle,
-        RigidBody memory rect
-    ) internal pure returns (RigidBody memory, RigidBody memory, bool) {
+    function resolveCircleRectCollision(RigidBody memory circle, RigidBody memory rect)
+        internal
+        pure
+        returns (RigidBody memory, RigidBody memory, bool)
+    {
         Circle memory c = abi.decode(circle.colliderData, (Circle));
         AABB memory bounds = abi.decode(rect.colliderData, (AABB));
 
-        int256 closestX = FixedPointMathLib.clamp(
-            circle.position.x,
-            bounds.min.x,
-            bounds.max.x
-        );
-        int256 closestY = FixedPointMathLib.clamp(
-            circle.position.y,
-            bounds.min.y,
-            bounds.max.y
-        );
+        int256 closestX = FixedPointMathLib.clamp(circle.position.x, bounds.min.x, bounds.max.x);
+        int256 closestY = FixedPointMathLib.clamp(circle.position.y, bounds.min.y, bounds.max.y);
 
         int256 dx = circle.position.x - closestX;
         int256 dy = circle.position.y - closestY;
 
-        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) +
-            FixedPointMathLib.rawSMulWad(dy, dy);
+        int256 distSquared = FixedPointMathLib.rawSMulWad(dx, dx) + FixedPointMathLib.rawSMulWad(dy, dy);
         int256 dist = sqrt(distSquared);
 
         if (dist == 0) {
@@ -703,10 +642,7 @@ library LibPhysics2D {
             dist = WAD;
         }
 
-        Vector2 memory normal = Vector2(
-            FixedPointMathLib.rawSDivWad(dx, dist),
-            FixedPointMathLib.rawSDivWad(dy, dist)
-        );
+        Vector2 memory normal = Vector2(FixedPointMathLib.rawSDivWad(dx, dist), FixedPointMathLib.rawSDivWad(dy, dist));
 
         int256 penetration = c.radius - dist;
 
@@ -722,65 +658,39 @@ library LibPhysics2D {
             int256 relVelX = circle.velocity.x - rect.velocity.x;
             int256 relVelY = circle.velocity.y - rect.velocity.y;
 
-            int256 velAlongNormal = FixedPointMathLib.rawSMulWad(
-                relVelX,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
+            int256 velAlongNormal =
+                FixedPointMathLib.rawSMulWad(relVelX, normal.x) + FixedPointMathLib.rawSMulWad(relVelY, normal.y);
 
             if (velAlongNormal > 0) return (circle, rect, true);
 
             int256 j = FixedPointMathLib.rawSMulWad(-(WAD + e), velAlongNormal);
             j = FixedPointMathLib.rawSDivWad(
-                j,
-                FixedPointMathLib.rawSDivWad(WAD, circle.mass) +
-                    FixedPointMathLib.rawSDivWad(WAD, rect.mass)
+                j, FixedPointMathLib.rawSDivWad(WAD, circle.mass) + FixedPointMathLib.rawSDivWad(WAD, rect.mass)
             );
 
             int256 impulseX = FixedPointMathLib.rawSMulWad(j, normal.x);
             int256 impulseY = FixedPointMathLib.rawSMulWad(j, normal.y);
 
-            circle.velocity.x -= FixedPointMathLib.rawSDivWad(
-                impulseX,
-                circle.mass
-            );
-            circle.velocity.y -= FixedPointMathLib.rawSDivWad(
-                impulseY,
-                circle.mass
-            );
-            rect.velocity.x += FixedPointMathLib.rawSDivWad(
-                impulseX,
-                rect.mass
-            );
-            rect.velocity.y += FixedPointMathLib.rawSDivWad(
-                impulseY,
-                rect.mass
-            );
+            circle.velocity.x -= FixedPointMathLib.rawSDivWad(impulseX, circle.mass);
+            circle.velocity.y -= FixedPointMathLib.rawSDivWad(impulseY, circle.mass);
+            rect.velocity.x += FixedPointMathLib.rawSDivWad(impulseX, rect.mass);
+            rect.velocity.y += FixedPointMathLib.rawSDivWad(impulseY, rect.mass);
         } else if (!circle.isStatic) {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                circle.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(circle.velocity.y, normal.y);
-            circle.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            circle.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(circle.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(circle.velocity.y, normal.y);
+            circle.velocity
+            .x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            circle.velocity
+            .y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         } else {
-            int256 velDotNormal = FixedPointMathLib.rawSMulWad(
-                rect.velocity.x,
-                normal.x
-            ) + FixedPointMathLib.rawSMulWad(rect.velocity.y, normal.y);
-            rect.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            rect.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            int256 velDotNormal =
+                FixedPointMathLib.rawSMulWad(rect.velocity.x, normal.x)
+                + FixedPointMathLib.rawSMulWad(rect.velocity.y, normal.y);
+            rect.velocity
+            .x -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.x), WAD + e);
+            rect.velocity
+            .y -= FixedPointMathLib.rawSMulWad(FixedPointMathLib.rawSMulWad(velDotNormal, normal.y), WAD + e);
         }
 
         return (circle, rect, true);
@@ -790,20 +700,13 @@ library LibPhysics2D {
     /*                     HELPER FUNCTIONS                       */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    function calculateAABBCollisionData(
-        AABB memory a,
-        AABB memory b,
-        Vector2 memory posA,
-        Vector2 memory posB
-    ) internal pure returns (Vector2 memory normal, int256 penetration) {
-        int256 overlapX = FixedPointMathLib.min(
-            a.max.x - b.min.x,
-            b.max.x - a.min.x
-        );
-        int256 overlapY = FixedPointMathLib.min(
-            a.max.y - b.min.y,
-            b.max.y - a.min.y
-        );
+    function calculateAABBCollisionData(AABB memory a, AABB memory b, Vector2 memory posA, Vector2 memory posB)
+        internal
+        pure
+        returns (Vector2 memory normal, int256 penetration)
+    {
+        int256 overlapX = FixedPointMathLib.min(a.max.x - b.min.x, b.max.x - a.min.x);
+        int256 overlapY = FixedPointMathLib.min(a.max.y - b.min.y, b.max.y - a.min.y);
 
         if (overlapX < overlapY) {
             penetration = overlapX;
@@ -823,33 +726,22 @@ library LibPhysics2D {
         return int256(FixedPointMathLib.sqrt(uint256(x)));
     }
 
-    function getBounds(
-        RigidBody memory body
-    ) internal pure returns (AABB memory) {
+    function getBounds(RigidBody memory body) internal pure returns (AABB memory) {
         if (body.shapeType == ShapeType.Rectangle) {
             return abi.decode(body.colliderData, (AABB));
         } else {
             Circle memory c = abi.decode(body.colliderData, (Circle));
-            return
-                AABB(
-                    Vector2(
-                        body.position.x - c.radius,
-                        body.position.y - c.radius
-                    ),
-                    Vector2(
-                        body.position.x + c.radius,
-                        body.position.y + c.radius
-                    )
-                );
+            return AABB(
+                Vector2(body.position.x - c.radius, body.position.y - c.radius),
+                Vector2(body.position.x + c.radius, body.position.y + c.radius)
+            );
         }
     }
 
-    function separateBodies(
-        RigidBody memory b1,
-        RigidBody memory b2,
-        Vector2 memory normal,
-        int256 penetration
-    ) internal pure {
+    function separateBodies(RigidBody memory b1, RigidBody memory b2, Vector2 memory normal, int256 penetration)
+        internal
+        pure
+    {
         if (!b1.isStatic && !b2.isStatic) {
             int256 halfPen = penetration / 2;
             b1.position.x -= FixedPointMathLib.rawSMulWad(normal.x, halfPen);
@@ -857,23 +749,11 @@ library LibPhysics2D {
             b2.position.x += FixedPointMathLib.rawSMulWad(normal.x, halfPen);
             b2.position.y += FixedPointMathLib.rawSMulWad(normal.y, halfPen);
         } else if (!b1.isStatic) {
-            b1.position.x -= FixedPointMathLib.rawSMulWad(
-                normal.x,
-                penetration
-            );
-            b1.position.y -= FixedPointMathLib.rawSMulWad(
-                normal.y,
-                penetration
-            );
+            b1.position.x -= FixedPointMathLib.rawSMulWad(normal.x, penetration);
+            b1.position.y -= FixedPointMathLib.rawSMulWad(normal.y, penetration);
         } else {
-            b2.position.x += FixedPointMathLib.rawSMulWad(
-                normal.x,
-                penetration
-            );
-            b2.position.y += FixedPointMathLib.rawSMulWad(
-                normal.y,
-                penetration
-            );
+            b2.position.x += FixedPointMathLib.rawSMulWad(normal.x, penetration);
+            b2.position.y += FixedPointMathLib.rawSMulWad(normal.y, penetration);
         }
     }
 
@@ -900,41 +780,22 @@ library LibPhysics2D {
     ) internal pure {
         if (!circle.isStatic && !rect.isStatic) {
             int256 halfPen = penetration / 2;
-            circle.position.x += FixedPointMathLib.rawSMulWad(
-                normal.x,
-                halfPen
-            );
-            circle.position.y += FixedPointMathLib.rawSMulWad(
-                normal.y,
-                halfPen
-            );
+            circle.position.x += FixedPointMathLib.rawSMulWad(normal.x, halfPen);
+            circle.position.y += FixedPointMathLib.rawSMulWad(normal.y, halfPen);
             rect.position.x -= FixedPointMathLib.rawSMulWad(normal.x, halfPen);
             rect.position.y -= FixedPointMathLib.rawSMulWad(normal.y, halfPen);
         } else if (!circle.isStatic) {
-            circle.position.x += FixedPointMathLib.rawSMulWad(
-                normal.x,
-                penetration
-            );
-            circle.position.y += FixedPointMathLib.rawSMulWad(
-                normal.y,
-                penetration
-            );
+            circle.position.x += FixedPointMathLib.rawSMulWad(normal.x, penetration);
+            circle.position.y += FixedPointMathLib.rawSMulWad(normal.y, penetration);
         } else {
-            rect.position.x -= FixedPointMathLib.rawSMulWad(
-                normal.x,
-                penetration
-            );
-            rect.position.y -= FixedPointMathLib.rawSMulWad(
-                normal.y,
-                penetration
-            );
+            rect.position.x -= FixedPointMathLib.rawSMulWad(normal.x, penetration);
+            rect.position.y -= FixedPointMathLib.rawSMulWad(normal.y, penetration);
         }
     }
 
     function checkMassRatio(int256 mass1, int256 mass2) internal pure {
-        int256 ratio = mass1 > mass2
-            ? FixedPointMathLib.rawSDivWad(mass1, mass2)
-            : FixedPointMathLib.rawSDivWad(mass2, mass1);
+        int256 ratio =
+            mass1 > mass2 ? FixedPointMathLib.rawSDivWad(mass1, mass2) : FixedPointMathLib.rawSDivWad(mass2, mass1);
         if (ratio > MAX_MASS_RATIO) revert MassRatioTooExtreme();
     }
 }
