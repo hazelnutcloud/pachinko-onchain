@@ -664,27 +664,19 @@ library LibPhysics2D {
                 b1.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
-            b1.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b1.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal < 0) return (b1, b2, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            b1.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            b1.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         } else {
             int256 velDotNormal = FixedPointMathLib.rawSMulWad(
                 b2.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
-            b2.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b2.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal > 0) return (b1, b2, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            b2.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            b2.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         }
 
         return (b1, b2, true);
@@ -748,27 +740,19 @@ library LibPhysics2D {
                 b1.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(b1.velocity.y, normal.y);
-            b1.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b1.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal < 0) return (b1, b2, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            b1.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            b1.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         } else {
             int256 velDotNormal = FixedPointMathLib.rawSMulWad(
                 b2.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(b2.velocity.y, normal.y);
-            b2.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            b2.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal > 0) return (b1, b2, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            b2.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            b2.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         }
 
         return (b1, b2, true);
@@ -862,27 +846,19 @@ library LibPhysics2D {
                 circle.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(circle.velocity.y, normal.y);
-            circle.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            circle.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal > 0) return (circle, rect, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            circle.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            circle.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         } else {
             int256 velDotNormal = FixedPointMathLib.rawSMulWad(
                 rect.velocity.x,
                 normal.x
             ) + FixedPointMathLib.rawSMulWad(rect.velocity.y, normal.y);
-            rect.velocity.x -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.x),
-                WAD + e
-            );
-            rect.velocity.y -= FixedPointMathLib.rawSMulWad(
-                FixedPointMathLib.rawSMulWad(velDotNormal, normal.y),
-                WAD + e
-            );
+            if (velDotNormal < 0) return (circle, rect, true);
+            int256 factor = FixedPointMathLib.rawSMulWad(WAD + e, velDotNormal);
+            rect.velocity.x -= FixedPointMathLib.rawSMulWad(factor, normal.x);
+            rect.velocity.y -= FixedPointMathLib.rawSMulWad(factor, normal.y);
         }
 
         return (circle, rect, true);
@@ -922,7 +898,7 @@ library LibPhysics2D {
         if (x <= 0) return 0;
         // casting to 'uint256' is safe because x > 0 is verified above
         // forge-lint: disable-next-line(unsafe-typecast)
-        return int256(FixedPointMathLib.sqrt(uint256(x)));
+        return int256(FixedPointMathLib.sqrtWad(uint256(x)));
     }
 
     function getBounds(

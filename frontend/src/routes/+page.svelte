@@ -19,7 +19,7 @@
 	const balance = await wallet.getBalance();
 	let nonce = Number(await wallet.getNonce());
 
-	const INITIAL_BALL_X = parseEther('53');
+	const INITIAL_BALL_X = parseEther('57');
 	const INITIAL_BALL_Y = parseEther('10.5');
 
 	const status = $derived(
@@ -135,7 +135,7 @@
 
 		stepGameInterval = setInterval(() => {
 			handleStepGame();
-		}, 1000 / 10);
+		}, 1000 / 30);
 	};
 
 	const handleContinueGame = async () => {
