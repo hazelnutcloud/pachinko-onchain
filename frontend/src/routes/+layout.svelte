@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import WalletProvider from '$lib/providers/wallet-provider.svelte';
 
 	let { children } = $props();
 </script>
@@ -9,4 +10,6 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{@render children?.()}
+<WalletProvider>
+	{@render children?.()}
+</WalletProvider>

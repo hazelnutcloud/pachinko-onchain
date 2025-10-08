@@ -58,10 +58,12 @@ contract Pachinko is Ownable {
             revert InvalidBallPosition();
         }
 
+        int256 initialY = 105e17;
+
         game.world.addCircleRigidBody(
             ballPosition,
-            50e18,
-            50e18,
+            initialY,
+            25e17,
             1e18,
             5e17, // 0.5
             false
@@ -69,7 +71,7 @@ contract Pachinko is Ownable {
 
         game.isPlaying = true;
 
-        emit GameStarted(msg.sender, ballPosition, 0);
+        emit GameStarted(msg.sender, ballPosition, initialY);
     }
 
     function stepGame() external {
@@ -103,5 +105,15 @@ contract Pachinko is Ownable {
         game.isPlaying = false;
 
         emit GameEnded(msg.sender, 0, 0);
+    }
+
+    function getPlayerGameStatus(
+        address player
+    ) external view returns (bool isPlaying, int256 ballX, int256 ballY) {
+        PlayerGame storage game = playerGames[player];
+
+        isPlaying = game.isPlaying;
+        ballX = game.world.bodies[0].position.x;
+        ballY = game.world.bodies[0].position.y;
     }
 }
