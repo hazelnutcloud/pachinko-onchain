@@ -21,7 +21,7 @@ contract Pachinko is Ownable {
         bool isPlaying;
     }
 
-    uint256 internal constant TIMESTEP = 3333333333333333; // 1/30 seconds
+    uint256 internal constant TIMESTEP = 20e15; // 20 milliseconds i.e. 50 hz
 
     LibPhysics2D.World internal map;
     int256 internal mapWidth;

@@ -2,7 +2,7 @@
 	import { T } from '@threlte/core';
 	import { OrbitControls, Gizmo } from '@threlte/extras';
 
-	const { ballX, ballY } = $props();
+	const { ballX, ballY }: { ballX: number; ballY: number } = $props();
 
 	$effect(() => {
 		console.log('ballX', ballX);

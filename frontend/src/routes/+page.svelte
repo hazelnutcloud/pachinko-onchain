@@ -5,7 +5,9 @@
 	import { Wallet } from '$lib/wallet.svelte';
 	import { Canvas } from '@threlte/core';
 	import { getContext } from 'svelte';
+	import { Tween } from 'svelte/motion';
 	import {
+		decodeEventLog,
 		encodeFunctionData,
 		formatEther,
 		parseEther,
@@ -21,6 +23,7 @@
 
 	const INITIAL_BALL_X = parseEther('57');
 	const INITIAL_BALL_Y = parseEther('10.5');
+	const timestep = 1000 / 50;
 
 	const status = $derived(
 		wallet.client && wallet.signer
@@ -39,22 +42,22 @@
 	$effect(() => {
 		if (!wallet.client || !wallet.signer) return;
 
-		const unsubscribeGameTicked = wallet.client.watchContractEvent({
-			abi: pachinkoContracts.abi,
-			address: pachinkoContracts.addresses[riseTestnet.id],
-			eventName: 'GameTicked',
-			args: {
-				player: wallet.signer.address
-			},
-			onLogs: (logs) => {
-				for (const log of logs) {
-					// console.log(log);
-					if (!log.args.ballX || !log.args.ballY) continue;
-					ballX = parseFloat(formatEther(log.args.ballX));
-					ballY = parseFloat(formatEther(log.args.ballY));
-				}
-			}
-		});
+		// const unsubscribeGameTicked = wallet.client.watchContractEvent({
+		// 	abi: pachinkoContracts.abi,
+		// 	address: pachinkoContracts.addresses[riseTestnet.id],
+		// 	eventName: 'GameTicked',
+		// 	args: {
+		// 		player: wallet.signer.address
+		// 	},
+		// 	onLogs: (logs) => {
+		// 		for (const log of logs) {
+		// 			// console.log(log);
+		// 			if (!log.args.ballX || !log.args.ballY) continue;
+		// 			ballX = parseFloat(formatEther(log.args.ballX));
+		// 			ballY = parseFloat(formatEther(log.args.ballY));
+		// 		}
+		// 	}
+		// });
 
 		const unsubscribeGameStarted = wallet.client.watchContractEvent({
 			abi: pachinkoContracts.abi,
@@ -90,7 +93,7 @@
 			console.log('unsubscribed');
 			unsubscribeGameStarted();
 			unsubscribeGameEnded();
-			unsubscribeGameTicked();
+			// unsubscribeGameTicked();
 		};
 	});
 
@@ -107,8 +110,10 @@
 			maxPriorityFeePerGas: 7n,
 			nonce: nonce++
 		}) satisfies SignTransactionParameters<typeof riseTestnet, undefined>;
-
-	let stepGameInterval: NodeJS.Timeout | undefined = $state();
+	let accumulator = 0;
+	let lastTimestamp = 0;
+	let animationId: number | undefined = $state();
+	const lastConfirmedTickTimes = $state<number[]>([]);
 
 	const handleStartGame = async () => {
 		if (!wallet.client || !wallet.signer) return;
@@ -133,41 +138,80 @@
 
 		console.log('startGame receipt: ', res);
 
-		stepGameInterval = setInterval(() => {
-			handleStepGame();
-		}, 1000 / 30);
+		tick();
 	};
 
 	const handleContinueGame = async () => {
 		console.log('continuing game');
 
-		stepGameInterval = setInterval(() => {
-			handleStepGame();
-		}, 1000 / 10);
+		tick();
 	};
 
-	const handleStepGame = async () => {
+	const tick = () => {
+		animationId = requestAnimationFrame((timestamp) => {
+			if (lastTimestamp === 0) {
+				lastTimestamp = timestamp;
+			}
+			const dt = timestamp - lastTimestamp;
+			console.log('dt', dt);
+			console.log('timestamp', timestamp);
+			console.log('lastTimestamp', lastTimestamp);
+			lastTimestamp = timestamp;
+			handleStepGame(dt);
+		});
+	};
+
+	const handleStepGame = (dt: number) => {
 		if (!isGameStarted) return;
-		if (!wallet.client || !wallet.signer) return;
-		// console.log('stepping game');
 
-		const serializedTransaction = await wallet.client.signTransaction({
-			...getBaseTxParams(wallet.signer),
-			chain: riseTestnet,
-			data: STEP_GAME_DATA,
-			to: pachinkoContracts.addresses[riseTestnet.id]
-		});
+		accumulator += dt;
+		while (accumulator >= timestep) {
+			accumulator -= timestep;
 
-		const res = await wallet.client.sendRawTransactionSync({
-			serializedTransaction
-		});
+			(async () => {
+				if (!wallet.client || !wallet.signer) return;
+				const serializedTransaction = await wallet.client.signTransaction({
+					...getBaseTxParams(wallet.signer),
+					chain: riseTestnet,
+					data: STEP_GAME_DATA,
+					to: pachinkoContracts.addresses[riseTestnet.id]
+				});
 
-		// console.log('stepGame receipt: ', res);
+				const res = await wallet.client.sendRawTransactionSync({
+					serializedTransaction
+				});
+
+				lastConfirmedTickTimes.push(performance.now());
+				if (lastConfirmedTickTimes.length === 6) {
+					lastConfirmedTickTimes.shift();
+				}
+
+				for (const log of res.logs) {
+					try {
+						const decodedLog = decodeEventLog({
+							abi: pachinkoContracts.abi,
+							topics: log.topics,
+							data: log.data,
+							eventName: 'GameTicked',
+							strict: true
+						});
+
+						ballX = parseFloat(formatEther(decodedLog.args.ballX));
+						ballY = parseFloat(formatEther(decodedLog.args.ballY));
+					} catch {
+						/* empty */
+					}
+				}
+			})();
+		}
+
+		tick();
 	};
 
 	const handleStopGame = () => {
-		clearInterval(stepGameInterval);
-		stepGameInterval = undefined;
+		if (!animationId) return;
+		cancelAnimationFrame(animationId);
+		animationId = undefined;
 	};
 
 	const handleResetGame = async () => {
@@ -191,6 +235,18 @@
 
 		console.log('resetGame receipt: ', res);
 	};
+
+	const getAverageOnchainFps = (lastConfirmedTickTimes: number[]) => {
+		if (lastConfirmedTickTimes.length === 0) return 0;
+		const fpsses = lastConfirmedTickTimes.reduce((acc, curr, index, array) => {
+			if (index === 0) return acc;
+			acc.push(1000 / (curr - array[index - 1]));
+			return acc;
+		}, [] as number[]);
+
+		const sum = fpsses.reduce((acc, curr) => acc + curr, 0);
+		return sum / fpsses.length;
+	};
 </script>
 
 <div class="flex min-h-screen w-full flex-col items-center justify-center p-4">
@@ -211,6 +267,12 @@
 					<p>balance:</p>
 					<p class="font-medium">{formatEther(balance)} ETH</p>
 				</div>
+				<div class="flex items-center gap-2">
+					<p>onchain fps:</p>
+					<p class="font-medium">
+						{getAverageOnchainFps(lastConfirmedTickTimes)}
+					</p>
+				</div>
 			</div>
 			<div class="aspect-square w-full outline outline-red-500">
 				<Canvas>
@@ -218,7 +280,7 @@
 				</Canvas>
 			</div>
 			<div class="flex w-full items-center justify-center gap-2">
-				{#if stepGameInterval === undefined && isGameStarted}
+				{#if animationId === undefined && isGameStarted}
 					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleResetGame}>
 						Reset Game
 					</button>

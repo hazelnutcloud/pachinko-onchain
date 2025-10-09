@@ -25,7 +25,7 @@ library LibPhysics2D {
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
     int256 internal constant WAD = 1e18;
-    int256 internal constant GRAVITY = 981e16;
+    int256 internal constant GRAVITY = 10e17;
     int256 internal constant MAX_MASS_RATIO = 1000 * WAD;
     uint256 internal constant MAX_TIMESTEP = 100e15; // 0.1 seconds in WAD units
     uint256 internal constant MAX_BODIES = 100;

@@ -282,6 +282,6 @@ export const pachinkoContracts = {
 		{ type: 'error', name: 'Unauthorized', inputs: [] }
 	],
 	addresses: {
-		[riseTestnet.id]: '0x4964A91db7ac79Dac2F4987f79F6DD980aF80E2F'
+		[riseTestnet.id]: '0x9b6B7AbCD04631bE36d999659F6770231dE313f5'
 	}
 } as const;
