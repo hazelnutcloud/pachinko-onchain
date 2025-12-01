@@ -1,28 +1,28 @@
 <script lang="ts">
 	import Scene from '$lib/components/scene.svelte';
 	import { pachinkoContracts } from '$lib/contracts';
-	import { walletContext } from '$lib/providers/wallet-provider.svelte';
+	// import { getWalletContext } from '$lib/providers/wallet-provider.svelte';
 	import { Wallet } from '$lib/wallet.svelte';
 	import { Canvas } from '@threlte/core';
-	import { getContext } from 'svelte';
-	import { Tween } from 'svelte/motion';
+	import { getContext, onMount } from 'svelte';
 	import {
 		decodeEventLog,
 		encodeFunctionData,
 		formatEther,
-		parseEther,
+		parseUnits,
 		type PrivateKeyAccount,
 		type SignTransactionParameters
 	} from 'viem';
 	import { readContract } from 'viem/actions';
 	import { riseTestnet } from 'viem/chains';
 
-	const wallet: Wallet = getContext(walletContext);
+	const wallet: Wallet = getContext('wallet');
 	const balance = await wallet.getBalance();
 	let nonce = Number(await wallet.getNonce());
+	console.log(nonce)
 
-	const INITIAL_BALL_X = parseEther('57');
-	const INITIAL_BALL_Y = parseEther('10.5');
+	const INITIAL_BALL_X = parseUnits('54', 16);
+	const INITIAL_BALL_Y = parseUnits('10.5', 16);
 	const timestep = 1000 / 50;
 
 	const status = $derived(
@@ -35,11 +35,17 @@
 				}).catch(() => [false, INITIAL_BALL_X, INITIAL_BALL_Y] as const)
 			: undefined
 	);
+
 	let isGameStarted = $derived(status?.[0] ?? false);
-	let ballX = $derived(parseFloat(formatEther(status?.[1] ?? INITIAL_BALL_X)));
-	let ballY = $derived(parseFloat(formatEther(status?.[2] ?? INITIAL_BALL_Y)));
+	let paused = $derived(isGameStarted);
 
 	$effect(() => {
+	  console.log(isGameStarted, paused)
+	})
+	let ballX = $derived(parseFloat(formatEther(status?.[1] || INITIAL_BALL_X)));
+	let ballY = $derived(parseFloat(formatEther(status?.[2] || INITIAL_BALL_Y)));
+
+	onMount(() => {
 		if (!wallet.client || !wallet.signer) return;
 
 		// const unsubscribeGameTicked = wallet.client.watchContractEvent({
@@ -89,6 +95,8 @@
 
 		console.log('subscribed');
 
+		// handleStartGame();
+
 		return () => {
 			console.log('unsubscribed');
 			unsubscribeGameStarted();
@@ -102,27 +110,33 @@
 		functionName: 'stepGame'
 	});
 
-	const getBaseTxParams = (account: PrivateKeyAccount) =>
-		({
+	const getBaseTxParams = (account: PrivateKeyAccount) => {
+		return {
 			account,
 			gas: 10_000_000n,
-			maxFeePerGas: 7n,
-			maxPriorityFeePerGas: 7n,
+			maxFeePerGas: 70n,
+			maxPriorityFeePerGas: 70n,
 			nonce: nonce++
-		}) satisfies SignTransactionParameters<typeof riseTestnet, undefined>;
+		} satisfies SignTransactionParameters<typeof riseTestnet, undefined>;
+	}
 	let accumulator = 0;
 	let lastTimestamp = 0;
 	let animationId: number | undefined = $state();
 	const lastConfirmedTickTimes = $state<number[]>([]);
 
-	const handleStartGame = async () => {
+	const handleStartGame = async (autoTick = true) => {
+		console.log('handleStartGame', wallet)
 		if (!wallet.client || !wallet.signer) return;
 		console.log('starting game');
 
 		isGameStarted = true;
 
-		const serializedTransaction = await wallet.client.signTransaction({
-			...getBaseTxParams(wallet.signer),
+		const baseParams = getBaseTxParams(wallet.signer)
+
+		console.log(baseParams)
+
+		const params = {
+			...baseParams,
 			chain: riseTestnet,
 			data: encodeFunctionData({
 				abi: pachinkoContracts.abi,
@@ -130,7 +144,11 @@
 				args: [INITIAL_BALL_X]
 			}),
 			to: pachinkoContracts.addresses[riseTestnet.id]
-		});
+		} as const
+
+		console.log(params)
+
+		const serializedTransaction = await wallet.client.signTransaction(params);
 
 		const res = await wallet.client.sendRawTransactionSync({
 			serializedTransaction
@@ -138,16 +156,21 @@
 
 		console.log('startGame receipt: ', res);
 
-		tick();
+		paused = false
+
+		if (autoTick) {
+			tick();
+		}
 	};
 
 	const handleContinueGame = async () => {
 		console.log('continuing game');
-
+		paused = false;
 		tick();
 	};
 
 	const tick = () => {
+	    if (paused) return;
 		animationId = requestAnimationFrame((timestamp) => {
 			if (lastTimestamp === 0) {
 				lastTimestamp = timestamp;
@@ -158,6 +181,7 @@
 			console.log('lastTimestamp', lastTimestamp);
 			lastTimestamp = timestamp;
 			handleStepGame(dt);
+			tick();
 		});
 	};
 
@@ -168,50 +192,60 @@
 		while (accumulator >= timestep) {
 			accumulator -= timestep;
 
-			(async () => {
-				if (!wallet.client || !wallet.signer) return;
-				const serializedTransaction = await wallet.client.signTransaction({
-					...getBaseTxParams(wallet.signer),
-					chain: riseTestnet,
-					data: STEP_GAME_DATA,
-					to: pachinkoContracts.addresses[riseTestnet.id]
-				});
+			stepGame();
+		}
+	};
 
-				const res = await wallet.client.sendRawTransactionSync({
-					serializedTransaction
-				});
+	const stepGame = async () => {
+		if (!wallet.client || !wallet.signer) return;
+		const serializedTransaction = await wallet.client.signTransaction({
+			...getBaseTxParams(wallet.signer),
+			chain: riseTestnet,
+			data: STEP_GAME_DATA,
+			to: pachinkoContracts.addresses[riseTestnet.id]
+		});
 
-				lastConfirmedTickTimes.push(performance.now());
-				if (lastConfirmedTickTimes.length === 6) {
-					lastConfirmedTickTimes.shift();
-				}
+		const res = await wallet.client.sendRawTransactionSync({
+			serializedTransaction
+		}).catch((e) => {
+			console.error(e);
+			paused = true;
+			return null
+		});
 
-				for (const log of res.logs) {
-					try {
-						const decodedLog = decodeEventLog({
-							abi: pachinkoContracts.abi,
-							topics: log.topics,
-							data: log.data,
-							eventName: 'GameTicked',
-							strict: true
-						});
+		if (!res) return;
 
-						ballX = parseFloat(formatEther(decodedLog.args.ballX));
-						ballY = parseFloat(formatEther(decodedLog.args.ballY));
-					} catch {
-						/* empty */
-					}
-				}
-			})();
+		lastConfirmedTickTimes.push(performance.now());
+		if (lastConfirmedTickTimes.length === 6) {
+			lastConfirmedTickTimes.shift();
 		}
 
-		tick();
+		for (const log of res.logs) {
+			try {
+				const decodedLog = decodeEventLog({
+					abi: pachinkoContracts.abi,
+					topics: log.topics,
+					data: log.data,
+					eventName: 'GameTicked',
+					strict: true
+				});
+
+				console.log('Game ticked:', decodedLog.args);
+
+				ballX = parseFloat(formatEther(decodedLog.args.ballX));
+				ballY = parseFloat(formatEther(decodedLog.args.ballY));
+			} catch {
+				/* empty */
+			}
+		}
 	};
+
 
 	const handleStopGame = () => {
 		if (!animationId) return;
 		cancelAnimationFrame(animationId);
 		animationId = undefined;
+		paused = true;
 	};
 
 	const handleResetGame = async () => {
@@ -280,23 +314,32 @@
 				</Canvas>
 			</div>
 			<div class="flex w-full items-center justify-center gap-2">
-				{#if animationId === undefined && isGameStarted}
-					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleResetGame}>
+				{#if paused && isGameStarted}
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleResetGame()}>
 						Reset Game
 					</button>
-					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleContinueGame}>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleContinueGame()}>
 						Continue Game
 					</button>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => stepGame()}>
+						Step Game
+					</button>
 				{:else if !isGameStarted}
-					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleStartGame}>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleStartGame()} type="button">
 						Start Game
 					</button>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleStartGame(false)} type="button">
+						Start Game (without auto tick)
+					</button>
 				{:else}
-					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleResetGame}>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleResetGame()}>
 						Reset Game
 					</button>
-					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={handleStopGame}>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => handleStopGame()}>
 						Pause Game
+					</button>
+					<button class="cursor-pointer rounded-sm p-1 shadow outline" onclick={() => stepGame()}>
+						Step Game
 					</button>
 				{/if}
 			</div>

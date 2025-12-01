@@ -58,12 +58,12 @@ contract Pachinko is Ownable {
             revert InvalidBallPosition();
         }
 
-        int256 initialY = 105e17;
+        int256 initialY = 105e15;
 
         game.world.addCircleRigidBody(
             ballPosition,
             initialY,
-            25e17,
+            25e15,
             1e18,
             5e17,
             false
@@ -113,7 +113,10 @@ contract Pachinko is Ownable {
         PlayerGame storage game = playerGames[player];
 
         isPlaying = game.isPlaying;
-        ballX = game.world.bodies[0].position.x;
-        ballY = game.world.bodies[0].position.y;
+
+        if (isPlaying) {
+            ballX = game.world.bodies[0].position.x;
+            ballY = game.world.bodies[0].position.y;
+        }
     }
 }

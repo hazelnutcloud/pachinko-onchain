@@ -57,8 +57,10 @@ export class Wallet {
 	async getNonce() {
 		if (!this.client || !this.signer) return 0n;
 
-		return await this.client.getTransactionCount({
+		const txCount = await this.client.getTransactionCount({
 			address: this.signer.address
 		});
+
+		return txCount;
 	}
 }

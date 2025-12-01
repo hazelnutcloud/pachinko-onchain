@@ -1,16 +1,17 @@
 <script module lang="ts">
-	export const walletContext = 'wallet' as const;
+	// export const [getWalletContext, setWalletContext] = createContext<Wallet>()
 </script>
 
 <script>
 	import { Wallet } from '$lib/wallet.svelte';
 	import { setContext } from 'svelte';
+	// import { createContext } from 'svelte';
 
 	const { children } = $props();
 
 	const wallet = new Wallet();
 
-	setContext(walletContext, wallet);
+	setContext('wallet', wallet);
 </script>
 
 {@render children()}
